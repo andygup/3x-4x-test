@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no"/>
+  <title>Test</title>
+  
+  <link rel="stylesheet" href="https://js.arcgis.com/3.38/esri/themes/calcite/dijit/calcite.css">
+  <link rel="stylesheet" href="https://js.arcgis.com/3.38/esri/themes/calcite/esri/esri.css">
+  
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    
+    #map {
+      position: relative;
+    }
+    
+    #player-controls {
+      position: absolute;
+      width: 100%;
+      top: 10px;
+      text-align: center;
+      z-index: 30;
+    }
+
+    #player-controls.hide {
+      display: none;
+    }
+    
+    #presentationInfo {
+      border: 1px solid black;
+      background-color: white;
+      padding: 5px;
+    }
+
+    .HomeButton {
+      position: absolute;
+      top: 90px;
+      left: 15px;
+      z-index: 30;
+    }
+
+    #bookmarks-container {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      bottom: 45px;
+      padding: 0.5rem;
+      background: #ffffff;
+      border-radius: 4px;
+      border: 1px solid #eeeeee;
+      
+      z-index: 1;
+      overflow: auto;
+    }
+
+    #bookmarks-container.hide {
+      display: none;
+    }
+
+    .calcite .esriBookmarkItem {
+      display: inline-flex;
+    }
+
+    .calcite .esriBookmarkLabel {
+      font-size: 16px;
+    }
+
+    .calcite .esriBookmarks .dojoDndItem .esriBookmarkItem::before {
+      content: "";
+    }
+  </style>
+  
+  <script>
+    var paramDefinitions = [
+      { name: "webmap", type: "string" },
+      { name: "portal", type: "string", defaultValue: "production" },
+      { name: "webgl",  type: "bool", defaultValue: true },
+      { name: "createExtents",  type: "bool" },
+      { name: "classicNav", type: "bool" }
+    ];
+  </script>
+  
+  <script src="./js/app.js"></script>
+  <script src="./js/dojo-config.js"></script>
+  <script>
+    // window.dojoConfig.has["esri-will-change"] = false;
+  </script>
+  <script src="https://js.arcgis.com/3.38/"></script>
+  
+  <script>
+    var map, homeWidget, bookmarksWidget, presentation;
+
+    require(
+      [
+        "esri/config",
+        "esri/sniff",
+        "esri/tasks/GeometryService",
+        "esri/map",
+        "esri/arcgis/utils",
+        "esri/dijit/Bookmarks",
+        "esri/dijit/HomeButton",
+        "app/js/Presentation",
+        "app/js/extentUtils",
+        "dojo/domReady!"
+      ],
+      function(esriConfig, esriSniff, GeometryService, Map, arcgisUtils, Bookmarks, HomeButton, Presentation, extentUtils) {
+
+        esriConfig.defaults.geometryService = new GeometryService("https://utilitydev.arcgisonline.com/arcgis/rest/services/Geometry/GeometryServer");
+        // esriConfig.defaults.map.zoomDuration = 0;
+        
+        //_______________________________________________________________________
+        
+        window.switchPortal = function(portalName) {
+          if (typeof portalName === "string") {
+            portalName = portalName.toLowerCase();
+          }
+
+          var portalDomain;
+
+          switch (portalName) {
+            case "production":
+              portalDomain = "www.arcgis.com";
+              break;
+
+            case "devext":
+              portalDomain = "devext.arcgis.com";
+              break;
+
+            default:
+              portalDomain = portalName;
+          }
+
+          arcgisUtils.arcgisUrl = "https://" + portalDomain + "/sharing/rest/content/items";
+          console.log("Current portal: ", arcgisUtils.arcgisUrl);
+        };
+
+        //_______________________________________________________________________
+        
+        function hideElementById(id) {
+          var node = document.getElementById(id);
+          node.classList.add("hide");
+        }
+
+        function showElementById(id) {
+          var node = document.getElementById(id);
+          node.classList.remove("hide");
+        }
+
+        function createHomeWidget(map) {
+          homeWidget = new HomeButton({ map: map }, document.getElementById("home-button"));
+          homeWidget.startup();
+        }
+
+        function createBookmarksWidget(map, bookmarks) {
+          bookmarks = bookmarks || [];
+          if (!bookmarks.length) {
+            return;
+          }
+
+          showElementById("bookmarks-container");
+          
+          bookmarksWidget = new Bookmarks({
+            map: map,
+            bookmarks: bookmarks,
+            editable: false
+          }, "bookmarks");
+        }
+        
+        function getBookmarkExtents(bookmarksWidget) {
+          return bookmarksWidget
+            ? bookmarksWidget.bookmarks.map(bookmark => bookmark.extent)
+            : null
+        }
+        
+        function createPresentation(map, bookmarksWidget) {
+          var extents = app.currentState.createExtents
+            ? extentUtils.createExtents(map.extent.expand(0.5))
+            : getBookmarkExtents(bookmarksWidget);
+          
+          extents = extents || [];
+          
+          if (!extents.length) {
+            return;
+          }
+
+          showElementById("player-controls");
+
+          var infoNode = document.getElementById("presentationInfo");
+          
+          presentation = new Presentation({
+            map: map,
+            extents: extents,
+            stepCallback: function(data) {
+              var info = data.current + " / " + data.total;
+              
+              infoNode.innerText = info;
+              localStorage.setItem(window.storageKey, info);
+            }
+          });
+        }
+
+        //_______________________________________________________________________
+
+        window.loadWebMap = function(webmapId) {
+          arcgisUtils.createMap(webmapId, "map", {
+            usePopupManager: true,
+            mapOptions: {
+              navigationMode: app.currentState.classicNav ? "classic" : null
+              // ,force3DTransforms: true
+            }
+          })
+            .then(function(response) {
+              // [1] Page title
+              var webmap = response.itemInfo;
+              
+              var pageTitle = webmap.item && webmap.item.title;
+              document.title = pageTitle + (app.currentState.webgl ? "" : " (SVG)");
+
+              map = response.map;
+
+              // [2] Home widget
+              createHomeWidget(map);
+
+              // [3] Bookmarks widget
+              createBookmarksWidget(map, webmap.itemData.bookmarks);
+
+              // [4] Presentation
+              createPresentation(map, bookmarksWidget);
+            
+              console.log("WebMap LOADED: ",  webmapId, "map.loaded?", map.loaded, "map.navigationMode: ", map.navigationMode);
+              console.log("map.loaded?", map.loaded);
+              console.log("map.navigationMode: ", map.navigationMode);
+            })
+
+            .otherwise(function(error) {
+              console.error("Unable to load WebMap: " + webmapId, error && error.message);
+              throw error;
+            });
+        };
+
+        //_______________________________________________________________________
+
+        window.storageKey = location.pathname + "?" + app._testing.toURLParams(app.currentState);
+        console.warn("[previous nav test progress]", localStorage.getItem(window.storageKey));
+        
+        window.switchPortal(app.currentState.portal);
+        window.loadWebMap(app.currentState.webmap);
+      }
+    );
+    
+  </script>
+</head>
+
+<body class="calcite">
+  <div id="map" style="position: relative;">
+    <div id="bookmarks-container" class="hide">
+      <div id="bookmarks"></div>
+    </div>
+    
+    <div id="home-button"></div>
+    
+    <div id="player-controls" class="hide">
+      <input type="button" value="Start" onclick="presentation.start();" />
+      &nbsp;-&nbsp;
+      <input type="button" value="Pause" onclick="presentation.pause();" />
+      <input type="button" value="Resume" onclick="presentation.resume();" />
+      &nbsp;-&nbsp;
+      <input type="button" value="Stop" onclick="presentation.stop();" />
+      &nbsp;-&nbsp;
+      <span id="presentationInfo">&nbsp;</span>
+    </div>
+  </div>
+</body>
+</html>
