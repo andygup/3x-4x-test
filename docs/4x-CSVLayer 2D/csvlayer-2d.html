@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Intro to CSVLayer | Sample | ArcGIS API for JavaScript 4.17</title>
+
+  <style>
+    html,
+    body,
+    #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      background-color: aliceblue;
+    }
+  </style>
+
+  <link rel="stylesheet" href="https://jsdev.arcgis.com/4.22/esri/themes/light/main.css" />
+  <script src="https://jsdev.arcgis.com/4.22/"></script>
+
+  <script>
+    require([
+      "esri/Map",
+      "esri/layers/CSVLayer",
+      "esri/views/MapView"
+    ], function (Map, CSVLayer, MapView) {
+      const url =
+        "./allquakes.csv";
+
+      const csvLayer = new CSVLayer({
+        title: "Hurricanes",
+        url: url,
+        copyright: "NOAA",
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-marker",  // autocasts as new SimpleMarkerSymbol()
+            color: "orange",
+            size: "6px",  // pixels
+            outline: {  // autocasts as new SimpleLineSymbol()
+              color: "gray",
+              width: 0.75
+            }
+          }
+        }
+      });
+      const map = new Map({
+        basemap: "dark-gray"
+      });
+
+      map.add(csvLayer);
+
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+        zoom: 3
+      });
+    });
+  </script>
+</head>
+
+<body>
+  <div id="viewDiv"></div>
+</body>
+
+</html>
