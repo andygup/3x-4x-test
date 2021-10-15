@@ -225,9 +225,9 @@
         });
 
         opts = {
-          duration: 500,
+          duration: 2000,
           animate: true,
-          easing: "easeOutSine",
+          easing: "ease-out",
         };
 
         // Tour!
@@ -264,13 +264,17 @@
                 view
                   .goTo({
                     zoom: loc.zoom * 2,
-                  })
+                  }, opts)
                   .then(function () {
                     view
                       .goTo({
-                        zoom: loc.zoom / 2,
+                        zoom: loc.zoom,
+                      }, opts)
+                      .then( () => {
+                        view.goTo({
+                            zoom: loc.zoom / 2,
+                        }, opts).then(next);
                       })
-                      .then(next);
                   });
               });
           }
