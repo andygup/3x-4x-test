@@ -45,7 +45,11 @@
 
     <script>
       let counts = 0;
+      let memCounter = 0;
       let round = 1;
+      const memoryFlag = "Memory";
+      const memoryFlagInit = "MemoryStart";
+      const initialMemoryCapture = "init";
 
       require([
         "esri/Map",
@@ -58,7 +62,7 @@
           return (bytes >>> 20) + "." + (bytes & (2 * 0x3ff));
         };
 
-        const measureMemory = () => {
+        const measureMemory = (flag) => {
           if (performance.memory) {
             let result;
             try {
@@ -78,9 +82,14 @@
               } else {
                 throw error;
               }
+            }            
+            // On keep the last "n" memory readings in memory. 
+            if(memCounter > 10) {
+              memCounter = 0;
             }
-            console.log("Performance: ", result);
-            localStorage.setItem("Memory", Date().toString() + ", " + result);
+
+            flag ? localStorage.setItem(memoryFlagInit, Date().toString() + ", " + result) :
+              localStorage.setItem(memoryFlag + memCounter++, Date().toString() + ", " + result);
           }
         };
 
@@ -222,10 +231,11 @@
         };
 
         // Tour!
-        view.whenLayerView(layer).then(() => {
+        view.whenLayerView(layer).then(() => {          
           let index = 0;
-          measureMemory();
-          function next() {
+          measureMemory(initialMemoryCapture);          
+          const next = () => {
+            measureMemory(); //snapshot before
             // console.log("next", round, index, counts);
             let loc = locations[index];
             index++;
