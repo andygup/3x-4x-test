@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>MapView</title>
+
+    <link
+      rel="stylesheet"
+      href="https://jsdev.arcgis.com/4.22/esri/css/main.css"
+    />
+    <script src="https://jsdev.arcgis.com/4.22/"></script>
+
+    <style>
+      html,
+      body,
+      #mapDiv {
+        padding: 0;
+        margin: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #info {
+        position: absolute;
+        background: #ffffff;
+        border: 1px solid grey;
+        margin: 0;
+        padding: 4px;
+        left: 56px;
+        top: 15px;
+      }
+      #timeinfo {
+        position: absolute;
+        background: #ffffff;
+        border: 1px solid grey;
+        margin: 0;
+        padding: 4px;
+        left: 56px;
+        top: 50px;
+      }
+    </style>
+
+    <script>
+      let counts = 0;
+      let memCounter = 0;
+      let round = 1;
+      const memoryFlag = "Memory";
+      const memoryFlagInit = "MemoryStart";
+      const initialMemoryCapture = "init";
+
+      require([
+        "esri/Map",
+        "esri/geometry/Extent",
+        "esri/views/MapView",
+        "esri/layers/CSVLayer",
+      ], (Map, Extent, MapView, CSVLayer) => {
+
+        const bytes2MBs = (bytes) => {
+          return (bytes >>> 20) + "." + (bytes & (2 * 0x3ff));
+        };
+
+        const measureMemory = (flag) => {
+          if (performance.memory) {
+            let result;
+            try {
+              result =
+                "Heap total: " +
+                bytes2MBs(performance.memory.totalJSHeapSize) +
+                ", Heap used: " +
+                bytes2MBs(performance.memory.usedJSHeapSize) +
+                ", Heap limit: " +
+                bytes2MBs(performance.memory.jsHeapSizeLimit);
+            } catch (error) {
+              if (
+                error instanceof DOMException &&
+                error.name === "SecurityError"
+              ) {
+                console.error("The context is not secure.");
+              } else {
+                throw error;
+              }
+            }            
+            // On keep the last "n" memory readings in memory. 
+            if(memCounter > 10) {
+              memCounter = 0;
+            }
+
+            flag ? localStorage.setItem(memoryFlagInit, Date().toString() + ", " + result) :
+              localStorage.setItem(memoryFlag + memCounter++, Date().toString() + ", " + result);
+          }
+        };
+
+        window.addEventListener("load", function () {
+          console.log("Loaded at", new Date().toString());
+
+          let starttime = performance.now();
+          sessionStorage.setItem("good_exit", "pending");
+
+          sessionStorage.setItem("start_time", new Date().toString());
+          // log status every 10 seconds
+          setInterval(() => {
+            let sec_num = parseInt(performance.now() / 1000, 10); // don't forget the second param
+            let hours = Math.floor(sec_num / 3600);
+            let minutes = Math.floor((sec_num - hours * 3600) / 60);
+            let seconds = sec_num - hours * 3600 - minutes * 60;
+            if (hours < 10) {
+              hours = "0" + hours;
+            }
+            if (minutes < 10) {
+              minutes = "0" + minutes;
+            }
+            if (seconds < 10) {
+              seconds = "0" + seconds;
+            }
+            let timestring = hours + ":" + minutes + ":" + seconds;
+            console.log(
+              counts +
+                " locations in " +
+                sec_num +
+                " seconds which is " +
+                timestring
+            );
+            timeinfo.innerHTML = "Running time: " + timestring;
+          }, 1000);
+        });
+
+        window.addEventListener("beforeunload", () => {
+          sessionStorage.setItem("good_exit", "true");
+          sessionStorage.setItem(
+            "beforeunload-random",
+            'Does it do "beforeunload" when crashing?'
+          );
+        });
+
+        window.addEventListener("unload", () => {
+          sessionStorage.setItem(
+            "unload",
+            'Does it do "unload" when crashing?'
+          );
+          sessionStorage.setItem("unload-time", new Date().toString());
+        });
+
+        let points = [
+          [10, 15],
+          [20, 25],
+          [30, 35],
+          [40, 45],
+          [90, 45],
+          [-122.4194, 37.7749],
+          [-118.2437, 34.0522],
+          [-117.1611, 32.7157],
+          [-74.0059, 40.7128],
+          [-79.3832, 43.6532],
+          [-96.797, 32.7767],
+          [-99.1332, 19.4326],
+          [72.8777, 19.076],
+          [67.0099, 24.8615],
+          [139.6917, 35.6895],
+          [-90, 45],
+          [50, 55],
+          [60, 15],
+          [70, 25],
+          [80, 35],
+          [15, 65],
+          [25, 45],
+        ];
+
+        let locations = [];
+
+        for (let i = 1; i < points.length; ++i) {
+          let p0 = points[i - 1];
+          let p1 = points[i];
+
+          let delta = Math.max(
+            Math.abs(p0[0] - p1[0]),
+            Math.abs(p0[1] - p1[1])
+          );
+          let deltaZ = 10 - delta / 12;
+          if (deltaZ < 0) {
+            // console.log('Bad zoom level!');
+          }
+          let pAvg = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+
+          locations.push({ center: p0, zoom: 7 });
+          locations.push({ center: pAvg, zoom: deltaZ });
+        }
+
+        const url = "./allquakes_38mb.csv";
+
+        layer = new CSVLayer({
+          title: "Hurricanes",
+          url: url,
+          copyright: "NOAA",
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-marker", // autocasts as new SimpleMarkerSymbol()
+              color: "orange",
+              size: "6px", // pixels
+              outline: {
+                // autocasts as new SimpleLineSymbol()
+                color: "gray",
+                width: 0.75,
+              },
+            },
+          },
+        });
+
+        map = new Map({
+          basemap: "dark-gray",
+          layers: [layer],
+        });
+
+        view = new MapView({
+          container: "mapDiv",
+          map: map,
+          center: locations[0].center,
+          zoom: locations[0].zoom,
+          //constraints: {
+          //  snapToZoom: true
+          // }
+        });
+
+        opts = {
+          duration: 2000,
+          animate: true,
+          easing: "ease-out",
+        };
+
+        // Tour!
+        view.whenLayerView(layer).then(() => {          
+          let index = 0;
+          measureMemory(initialMemoryCapture);          
+          const next = () => {
+            measureMemory(); //snapshot before
+            // console.log("next", round, index, counts);
+            let loc = locations[index];
+            index++;
+            if (index === locations.length) {
+              index = 0;
+              console.log(
+                "Round",
+                round,
+                "done.",
+                counts + " locations so far."
+              );
+              round++;
+            }
+            counts++;
+            info.innerHTML = counts + ": Round " + round + " Location " + index;
+
+            view
+              .goTo(
+                {
+                  center: loc.center,
+                  zoom: loc.zoom,
+                },
+                opts
+              )
+              .then(function () {
+                view
+                  .goTo({
+                    zoom: loc.zoom * 2,
+                  }, opts)
+                  .then(function () {
+                    view
+                      .goTo({
+                        zoom: loc.zoom,
+                      }, opts)
+                      .then( () => {
+                        view.goTo({
+                            zoom: loc.zoom / 2,
+                        }, opts).then(next);
+                      })
+                  });
+              });
+          }
+
+          next();
+        });
+      });
+    </script>
+  </head>
+  <body>
+    <div id="mapDiv">
+      <p id="info">Loading...</p>
+      <p id="timeinfo"></p>
+    </div>
+  </body>
+</html>
